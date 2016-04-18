@@ -1,3 +1,5 @@
+# http://www.nltk.org/api/nltk.html#nltk.tree.Tree
+
 from nltk import tokenize
 
 initial_sentence = "Hello. Group A is the coolest group ever. How do we create a tree from this sentence."
