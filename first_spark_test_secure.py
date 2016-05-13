@@ -334,6 +334,7 @@ def extract_features_and_target(input):
     return LabeledPoint(output[-1], output[:-1])
 
 textFile = sc.textFile("/Users/ivanmartin/Google Drive/IE BD Master/NLP/TextEntilmentDevelopment/NLTK_sentence_entailments/training_set.xml")
+textFile_test = sc.textFile("/Users/ivanmartin/Google Drive/IE BD Master/NLP/TextEntilmentDevelopment/NLTK_sentence_entailments/textual_entailment_test.xml")
 
 original_data = textFile.map(lambda x:[x.split("id=\"",1)[1].split("\"",1)[0],
                                    x.split("entailment=\"",1)[1].split("\"",1)[0],
@@ -341,9 +342,24 @@ original_data = textFile.map(lambda x:[x.split("id=\"",1)[1].split("\"",1)[0],
                                    x.split("<t>",1)[1].split("</t>",1)[0],
                                    x.split("<h>",1)[1].split("</h>",1)[0]])
 
+original_data_test = textFile_test.map(lambda x:[[x.split("id=\"",1)[1].split("\"",1)[0],
+                                                 "YES",
+                                                 x.split("task=\"",1)[1].split("\"",1)[0],
+                                                 x.split("<t>",1)[1].split("</t>",1)[0],
+                                                 x.split("<h>",1)[1].split("</h>",1)[0]],x])
+print("hola")
+for i in original_data.take(5):
+    print(i)
+print("cp")
+for i in original_data_test.take(5):
+    print(i)
+
 original_data_ready_to_extract_features = original_data.map(lambda x: [int(x[0]), True, x[2], x[3], x[4]] if (x[1] == "YES") else [int(x[0]), False, x[2], x[3], x[4]])
+original_data_ready_to_extract_features_test = original_data_test.map(lambda x: [[int(x[0][0]), True, x[0][2], x[0][3], x[0][4]],x[1]] if (x[0][1] == "YES") else [[int(x[0][0]), False, x[0][2], x[0][3], x[0][4]],x[1]])
+
 
 training_features_with_target = original_data_ready_to_extract_features.map(lambda x: extract_features_and_target(x))
+training_features_with_target_test = original_data_ready_to_extract_features_test.map(lambda x: (x[0][0],x[1], extract_features_and_target(x[0])))
 #training_features_with_target = original_data_ready_to_extract_features.map(extract_features_and_target)
 
 results = []
@@ -352,16 +368,19 @@ for i in [300]:
     # Build the model
     model = SVMWithSGD.train(training_features_with_target, iterations=i)
 
-# Evaluating the model on training data
+    # Evaluating the model on training data
     labelsAndPreds = training_features_with_target.map(lambda p: (p.label, not model.predict(p.features)))
     trainErr = labelsAndPreds.filter(lambda realAndPrediction: realAndPrediction[0] != realAndPrediction[1]).count() / float(training_features_with_target.count())
     print("Training Error = " + str(trainErr))
     results.append(trainErr)
 
-import matplotlib.pyplot as plt
-plt.plot(results)
-plt.show()
+    Predictions_of_test_set = training_features_with_target_test.map(lambda p: (p[0],p[1], not model.predict(p[2].features)))
 
-# Save and load model
-#model.save(sc, "myModelPath")
-#sameModel = SVMModel.load(sc, "myModelPath")
+Test_data_with_prediction = Predictions_of_test_set.map(lambda p: p[1].split("task=")[0] + str("entailment=\"YES\" " if p[2]==True else "entailment=\"NO\" ") + "task=" +p[1].split("task=")[1])
+
+for i in Test_data_with_prediction.take(100):
+    print(i)
+
+Test_data_with_prediction.saveAsTextFile("/Users/ivanmartin/Google Drive/IE BD Master/NLP/TextEntilmentDevelopment/NLTK_sentence_entailments/textual_entailment_test_with_prediction.xml")
+
+
