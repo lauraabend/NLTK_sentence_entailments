@@ -2,25 +2,18 @@ from pyspark import SparkContext, SparkConf
 import os
 os.environ["SPARK_HOME"] = "/Users/ivanmartin/Software/spark-1.6.1"
 conf = (SparkConf().setMaster('local').setAppName('a'))
-
-from pyspark.mllib.classification import SVMWithSGD, SVMModel
+from pyspark.mllib.classification import SVMWithSGD
 from pyspark.mllib.regression import LabeledPoint
 from nltk.corpus import stopwords, wordnet
 from nltk.stem import PorterStemmer
 from nltk.tokenize import sent_tokenize, word_tokenize, RegexpTokenizer, PunktSentenceTokenizer
-import nltk
-from nltk.metrics import *
-import nltk.corpus
-import nltk.tokenize.punkt
-import nltk.stem.snowball
-import string
+
 import re
-#from __future__ import print_function
 from nltk.metrics import *
-import numpy
 
 sc = SparkContext()
 
+#input = [1, 0.0, "IE", "He met U.S. President, George W. Bush, in Washington and British Prime Minister, Tony Blair, in London.", "Washington is a part of London."]
 def extract_features_and_target(input):
 
     #cachedStopWords = stopwords.words("english") #common english words
