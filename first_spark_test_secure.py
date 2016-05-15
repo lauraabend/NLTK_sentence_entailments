@@ -3,8 +3,12 @@ from pyspark import SparkContext, SparkConf
 import os
 os.environ["SPARK_HOME"] = "/Users/ivanmartin/Software/spark-1.6.1"
 conf = (SparkConf().setMaster('local').setAppName('a'))
+
+
 from pyspark.mllib.classification import SVMWithSGD
+from pyspark.mllib.tree import RandomForest
 from pyspark.mllib.regression import LabeledPoint
+from pyspark.mllib.tree import GradientBoostedTrees
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.tokenize import sent_tokenize, word_tokenize, RegexpTokenizer, PunktSentenceTokenizer
@@ -347,12 +351,6 @@ original_data_test = textFile_test.map(lambda x:[[x.split("id=\"",1)[1].split("\
                                                  x.split("task=\"",1)[1].split("\"",1)[0],
                                                  x.split("<t>",1)[1].split("</t>",1)[0],
                                                  x.split("<h>",1)[1].split("</h>",1)[0]],x])
-print("hola")
-for i in original_data.take(5):
-    print(i)
-print("cp")
-for i in original_data_test.take(5):
-    print(i)
 
 original_data_ready_to_extract_features = original_data.map(lambda x: [int(x[0]), True, x[2], x[3], x[4]] if (x[1] == "YES") else [int(x[0]), False, x[2], x[3], x[4]])
 original_data_ready_to_extract_features_test = original_data_test.map(lambda x: [[int(x[0][0]), True, x[0][2], x[0][3], x[0][4]],x[1]] if (x[0][1] == "YES") else [[int(x[0][0]), False, x[0][2], x[0][3], x[0][4]],x[1]])
@@ -363,24 +361,78 @@ training_features_with_target_test = original_data_ready_to_extract_features_tes
 #training_features_with_target = original_data_ready_to_extract_features.map(extract_features_and_target)
 
 results = []
-#for i in [5,10,15]:
-for i in [300]:
-    # Build the model
-    model = SVMWithSGD.train(training_features_with_target, iterations=i)
 
-    # Evaluating the model on training data
-    labelsAndPreds = training_features_with_target.map(lambda p: (p.label, not model.predict(p.features)))
-    trainErr = labelsAndPreds.filter(lambda realAndPrediction: realAndPrediction[0] != realAndPrediction[1]).count() / float(training_features_with_target.count())
-    print("Training Error = " + str(trainErr))
-    results.append(trainErr)
 
-    Predictions_of_test_set = training_features_with_target_test.map(lambda p: (p[0],p[1], not model.predict(p[2].features)))
+from pyspark.mllib.tree import RandomForest
+
+# Split the data into training and test sets (30% held out for testing)
+(trainingData, testData) = training_features_with_target.randomSplit([0.7, 0.3])
+
+# Train a RandomForest model.
+#  Empty categoricalFeaturesInfo indicates all features are continuous.
+#  Note: Use larger numTrees in practice.
+#  Setting featureSubsetStrategy="auto" lets the algorithm choose.
+print("Training model with 70% of the data")
+model = RandomForest.trainClassifier(trainingData, numClasses=2, categoricalFeaturesInfo={},
+                                     numTrees=4, featureSubsetStrategy="auto",
+                                     impurity='gini', maxDepth=3, maxBins=32)
+
+# Evaluate model on test instances and compute test error
+predictions = model.predict(testData.map(lambda x: x.features))
+#predictions_Adjusted = predictions.map(lambda x: not x)
+labelsAndPredictions = testData.map(lambda lp: lp.label).zip(predictions)
+#testErr = labelsAndPredictions.filter(lambda (v, p): v != p).count() / float(testData.count())
+testErr = labelsAndPredictions.filter(lambda x: x[0] != x[1]).count() / float(testData.count())
+
+print('Test Error with 30% of the data= ' + str(testErr))
+
+print("Now training with 100% of the data but same configuration as in the previous test")
+model = RandomForest.trainClassifier(training_features_with_target, numClasses=2, categoricalFeaturesInfo={},
+                                     numTrees=4, featureSubsetStrategy="auto",
+                                     impurity='gini', maxDepth=3, maxBins=32)
+
+print("Using model with 100% training data to predict validation set")
+#Predictions_of_test_set = training_features_with_target_test.map(lambda p: (p[0],p[1], model.predict(p[2].features)))
+
+# Evaluate model on test instances and compute test error
+predictions = model.predict(training_features_with_target_test.map(lambda x: x[2].features))
+Predictions_of_test_set_with_subarray = training_features_with_target_test.map(lambda p: [p[0], p[1]]).zip(predictions)
+Predictions_of_test_set = Predictions_of_test_set_with_subarray.map(lambda x:[x[0][0], x[0][1],x[1]])
 
 Test_data_with_prediction = Predictions_of_test_set.map(lambda p: p[1].split("task=")[0] + str("entailment=\"YES\" " if p[2]==True else "entailment=\"NO\" ") + "task=" +p[1].split("task=")[1])
 
-for i in Test_data_with_prediction.take(100):
+print("Saving predictions")
+Test_data_with_prediction.saveAsTextFile("/Users/ivanmartin/Google Drive/IE BD Master/NLP/TextEntilmentDevelopment/NLTK_sentence_entailments/textual_entailment_test_with_prediction.xml")
+
+
+
+
+'''
+# Build the model
+model = SVMWithSGD.train(training_features_with_target, iterations=300)
+#model = RandomForest.trainClassifier(training_features_with_target, numClasses=2, categoricalFeaturesInfo={},
+#                                 numTrees=30, featureSubsetStrategy="auto", impurity='gini', maxDepth=8, maxBins=32)
+#model = GradientBoostedTrees.trainClassifier(training_features_with_target, categoricalFeaturesInfo={}, numIterations=3)
+# Evaluating the model on training data
+predictions = model.predict(training_features_with_target.map(lambda x: x.features))
+labelsAndPredictions = training_features_with_target.map(lambda lp: lp.label).zip(predictions)
+#labelsAndPreds = training_features_with_target.map(lambda p: (p.label, not model.predict(p.features)))
+for j in labelsAndPredictions.take(4):
+    print(j)
+#trainErr = labelsAndPreds.filter(lambda realAndPrediction: realAndPrediction[0] != realAndPrediction[1]).count() / float(training_features_with_target.count())
+correctCount = labelsAndPredictions.filter(lambda realAndPrediction: realAndPrediction[0] != realAndPrediction[1]).count()
+totalCount = float(training_features_with_target.count())
+print("Training Error = " + str(correctCount/totalCount))
+results.append(correctCount/totalCount)
+
+Predictions_of_test_set = training_features_with_target_test.map(lambda p: (p[0],p[1], not model.predict(p[2].features)))
+
+Test_data_with_prediction = Predictions_of_test_set.map(lambda p: p[1].split("task=")[0] + str("entailment=\"YES\" " if p[2]==True else "entailment=\"NO\" ") + "task=" +p[1].split("task=")[1])
+
+for i in Test_data_with_prediction.take(5):
     print(i)
 
 Test_data_with_prediction.saveAsTextFile("/Users/ivanmartin/Google Drive/IE BD Master/NLP/TextEntilmentDevelopment/NLTK_sentence_entailments/textual_entailment_test_with_prediction.xml")
 
 
+'''
