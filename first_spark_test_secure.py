@@ -374,7 +374,7 @@ from pyspark.mllib.tree import RandomForest
 #  Setting featureSubsetStrategy="auto" lets the algorithm choose.
 print("Training model with 70% of the data")
 model = RandomForest.trainClassifier(trainingData, numClasses=2, categoricalFeaturesInfo={},
-                                     numTrees=4, featureSubsetStrategy="auto",
+                                     numTrees=5, featureSubsetStrategy="auto",
                                      impurity='gini', maxDepth=3, maxBins=32)
 
 # Evaluate model on test instances and compute test error
